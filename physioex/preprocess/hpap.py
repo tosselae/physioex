@@ -3,9 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
-import pyedflib
 from loguru import logger
-from scipy.signal import resample
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
@@ -13,9 +11,7 @@ from physioex.preprocess.utils.sleepdata import process_sleepdata_file
 
 
 class HPAPPreprocessor(Preprocessor):
-
     def __init__(self, data_folder: str = None):
-
         super().__init__(
             dataset_name="hpap",
             signal_shape=[3, 3000],
@@ -27,7 +23,6 @@ class HPAPPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         records_dir = os.path.join(self.dataset_folder, "homepap", "polysomnography")
 
         edf_dir = os.path.join(records_dir, "edfs", "lab")
@@ -56,18 +51,15 @@ class HPAPPreprocessor(Preprocessor):
         return records
 
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         edf_path, xml_path = record
 
         return process_sleepdata_file(edf_path, xml_path)
 
     def customize_table(self, table) -> pd.DataFrame:
-
         return table
 
 
 if __name__ == "__main__":
-
     p = HPAPPreprocessor(data_folder="/mnt/vde/sleep-data/")
 
     p.run()

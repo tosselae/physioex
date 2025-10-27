@@ -5,15 +5,13 @@ from argparse import ArgumentParser
 import yaml
 
 from physioex.train.networks import config as network_config
-from typing import Union
 
 
 def read_config(args: ArgumentParser) -> dict:
-
     args = vars(args)
 
     if args["config"] is not None:
-        with open(args.config, "r") as file:
+        with open(args.config) as file:
             config = yaml.safe_load(file)
 
         args.update(config)
@@ -33,14 +31,12 @@ def deep_update(dict1, dict2):
 
 
 def parse_model(parser: dict) -> dict:
-
     model = parser["model"]
 
     default_config = network_config["default"].copy()
 
     if model.endswith(".yaml"):
-
-        with open(model, "r") as file:
+        with open(model) as file:
             config = yaml.safe_load(file)
 
     elif model in network_config.keys():
@@ -74,7 +70,6 @@ def parse_model(parser: dict) -> dict:
 
 
 class PhysioExParser:
-
     parser = ArgumentParser()
 
     parser.add_argument(
@@ -136,7 +131,7 @@ class PhysioExParser:
         required=False,
         help="The absolute path of the directory where the physioex dataset are stored, if None the home directory is used. Expected type: str. Optional. Default: None",
     )
-    
+
     parser.add_argument(
         "--fold",
         "-fd",
@@ -169,13 +164,6 @@ class PhysioExParser:
         "-hpc",
         action="store_true",
         help="Using high performance computing setups or not, need to be called when datasets have been compressed into .h5 format with the compress_datasets command. Expected type: bool. Optional. Default: False",
-    )
-    
-    parser.add_argument(
-        "--fast",
-        "-f",
-        action="store_true",
-        help="Use fast mode for training and testing, this will load the datasets in memory ( half precision for training and full precision for testing ) and will not use the hpc mode. Expected type: bool. Optional. Default: False",
     )
 
     parser.add_argument(
@@ -226,7 +214,6 @@ class PhysioExParser:
 
     @classmethod
     def train_parser(cls) -> dict:
-
         cls.parser.add_argument(
             "-ck",
             "--checkpoint_dir",
@@ -259,7 +246,6 @@ class PhysioExParser:
 
     @classmethod
     def test_parser(cls):
-
         cls.parser.add_argument(
             "-ck_path",
             "--checkpoint_path",
@@ -276,7 +262,6 @@ class PhysioExParser:
 
     @classmethod
     def finetune_parser(cls):
-
         cls.parser.add_argument(
             "-ck",
             "--checkpoint_dir",

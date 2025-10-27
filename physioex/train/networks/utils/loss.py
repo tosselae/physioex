@@ -1,16 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Dict
 
-import torch
 from pytorch_metric_learning import losses, miners
 from pytorch_metric_learning.distances import CosineSimilarity
-from pytorch_metric_learning.reducers import ClassWeightedReducer
 from pytorch_metric_learning.regularizers import LpRegularizer
 from torch import nn
 
 
 class PhysioExLoss(ABC):
-
     @abstractmethod
     def forward(self, emb, preds, targets):
         pass
@@ -71,7 +67,6 @@ class GradLoss(nn.Module):
         self.ce_loss = nn.CrossEntropyLoss()
 
     def forward(self, emb, preds, targets):
-
         # reshape embeddings
         emb = emb.reshape(-1, 5, 3)  # batch_size, nclass, nchan
         # consider only the target class

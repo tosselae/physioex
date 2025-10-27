@@ -1,9 +1,5 @@
-from collections import OrderedDict
-
 import torch
 import torch.nn as nn
-import torch.optim as optim
-from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
 from physioex.train.networks.base import SleepModule
 
@@ -12,7 +8,6 @@ module_config = dict()
 
 class SeqSleepNet(SleepModule):
     def __init__(self, module_config=module_config):
-
         module_config.update(
             {
                 "T": 29,
@@ -40,7 +35,6 @@ class Net(nn.Module):
         self.sequence_encoder = SequenceEncoder(module_config)
 
     def encode(self, x):
-
         batch, L, nchan, T, F = x.size()
 
         x = x.reshape(-1, nchan, T, F)
@@ -92,23 +86,26 @@ class EpochEncoder(nn.Module):
     def forward(self, x):
         batch_size, in_chans, T, F = x.size()
 
-        assert (
-            in_chans == self.in_chans
-        ), f"channels dimension mismatch, provided input size: {str(x.size())}"
-        assert (
-            T == self.T
-        ), f"time dimension mismatch, provided input size: {str(x.size())}"
-        assert (
-            F == self.F
-        ), f"frequency dimension mismatch, provided input size: {str(x.size())}"
+        assert in_chans == self.in_chans, (
+            f"channels dimension mismatch, provided input size: {str(x.size())}"
+        )
+        assert T == self.T, (
+            f"time dimension mismatch, provided input size: {str(x.size())}"
+        )
+        assert F == self.F, (
+            f"frequency dimension mismatch, provided input size: {str(x.size())}"
+        )
 
         x = self.F2_filtbank(x)
         x = x.permute(0, 2, 1, 3)  # (batch_size, T, in_chan, D )
-        x = torch.reshape(x, (batch_size, self.T, self.in_chans * self.D ))
-        x, _ = self.F2_birnn(x)
+        x = torch.reshape(x, (batch_size, self.T, self.in_chans * self.D))
+
+        dtype = x.dtype
+        x, _ = self.F2_birnn(x.to(torch.float32))
+        x = x.to(dtype)
         x = self.F2_attention(x)
 
-        return x.reshape( batch_size, -1)
+        return x.reshape(batch_size, -1)
 
 
 class SequenceEncoder(nn.Module):
@@ -133,7 +130,9 @@ class SequenceEncoder(nn.Module):
         return x
 
     def encode(self, x):
-        x, _ = self.LSTM(x)
+        dtype = x.dtype
+        x, _ = self.LSTM(x.to(torch.float32))
+        x = x.to(dtype)
         return x
 
 

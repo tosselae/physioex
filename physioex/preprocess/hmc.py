@@ -54,7 +54,6 @@ fs = 256
 
 
 def read_edf(file_path):
-
     stages_path = file_path[:-4] + "_sleepscoring.edf"
     f = pyedflib.EdfReader(stages_path)
     _, _, annt = f.readAnnotations()
@@ -74,14 +73,18 @@ def read_edf(file_path):
 
     for indx, modality in enumerate(["EEG C3-M2", "EOG", "EMG chin", "ECG"]):
         if modality == "EOG":
-
             left = f.getSignalLabels().index("EOG E1-M2")
             right = f.getSignalLabels().index("EOG E2-M2")
 
+            fs_left = int(f.getSampleFrequency(left))
+            fs_right = int(f.getSampleFrequency(right))
+            if fs_left != fs_right:
+                raise ValueError("EOG channels have different sampling frequencies")
+
+            fs = fs_left
             signal = (f.readSignal(left) + f.readSignal(right)).reshape(-1, fs)
 
         else:
-
             i = f.getSignalLabels().index(modality)
             fs = int(f.getSampleFrequency(i))
             signal = f.readSignal(i).reshape(-1, fs)
@@ -104,7 +107,6 @@ def read_edf(file_path):
 
 
 class HMCPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -112,7 +114,6 @@ class HMCPreprocessor(Preprocessor):
         preprocessor_shape=[[4, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="hmc",
             signal_shape=[4, 3000],
@@ -141,7 +142,6 @@ class HMCPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         subjects_dir = os.path.join(
             self.dataset_folder,
             "download",
@@ -150,7 +150,7 @@ class HMCPreprocessor(Preprocessor):
 
         records_file = os.path.join(subjects_dir, "RECORDS")
 
-        with open(records_file, "r") as file:
+        with open(records_file) as file:
             records = file.readlines()
 
         records = [record.rstrip("\n") for record in records]
@@ -174,7 +174,6 @@ class HMCPreprocessor(Preprocessor):
 
     @logger.catch
     def get_sets(self) -> Tuple[np.array, np.array, np.array]:
-
         np.random.seed(42)
 
         table = self.table.copy()
@@ -198,7 +197,6 @@ class HMCPreprocessor(Preprocessor):
 
 
 if __name__ == "__main__":
-
     p = HMCPreprocessor(data_folder="/mnt/guido-data/")
 
     p.run()

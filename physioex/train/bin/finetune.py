@@ -7,7 +7,6 @@ from physioex.train.utils.finetune import finetune
 
 
 def finetune_script():
-
     parser = PhysioExParser.finetune_parser()
 
     datamodule_kwargs = {
@@ -54,18 +53,16 @@ def finetune_script():
         model_checkpoint=None,
         learning_rate=parser["learning_rate"],
         train_kwargs=train_kwargs,
-        fast=parser["fast"],
     )
 
     best_checkpoint = os.path.join(train_kwargs["checkpoint_path"], best_checkpoint)
 
     if parser["test"]:
-        
         if parser["fast"]:
             from physioex.train.utils.fast_test import test
         else:
             from physioex.train.utils.test import test
-        
+
         test(
             datasets=parser["datasets"],
             datamodule_kwargs=datamodule_kwargs,

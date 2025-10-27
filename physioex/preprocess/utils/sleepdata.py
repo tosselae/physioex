@@ -1,6 +1,5 @@
 import math
 import os
-import re
 import xml.etree.ElementTree as ET
 
 import numpy as np
@@ -20,9 +19,9 @@ def read_edfrecords(filename, channel, start=0, n=None):
 
     # Leggi il segnale dal canale specificato
     if n is None:
-        print('n is None')
+        print("n is None")
     n = None if n is None else int(n * fs)
-    signal = f.readSignal(channel, int(start*fs), n)
+    signal = f.readSignal(channel, int(start * fs), n)
 
     # Chiudi il file EDF
     f.close()
@@ -75,9 +74,9 @@ def read_sleepdata_annotation(filename):
             durations.append(duration)
 
     # Verifica che non ci siano errori nel numero di epoche
-    assert (starts[-1] + durations[-1]) / 30 == len(
-        stages
-    ), "Error: mismatch in number of epochs in annotations file"
+    assert (starts[-1] + durations[-1]) / 30 == len(stages), (
+        "Error: mismatch in number of epochs in annotations file"
+    )
 
     # print(f'Number of stages: {len(stages)}')
 
@@ -85,14 +84,8 @@ def read_sleepdata_annotation(filename):
 
 
 def process_sleepdata_file(edf_path, xml_path):
-
-    ret = 1
-
     fs = 100
     epoch_second = 30
-    win_size = 2
-    overlap = 1
-    nfft = next_power_of_2(win_size * fs)
 
     # print(nfft)
 
@@ -104,9 +97,9 @@ def process_sleepdata_file(edf_path, xml_path):
 
     try:
         stages = read_sleepdata_annotation(xml_path)
-    except Exception as e:
+    except Exception:
         print(f"Error reading file: {xml_path}")
-        print(f"skipping subject")
+        print("skipping subject")
         return None, None
     available_channels = get_channels(edf_path)
 
@@ -221,7 +214,6 @@ def process_sleepdata_file(edf_path, xml_path):
     else:
         # print('Wake is not the biggest class, nothing to remove.')
         pass
-    stages_from = [0, 1, 2, 3, 4, 5]
     stages_to = [0, 1, 2, 3, 3, 4]
 
     # map stages to the new stages
@@ -234,7 +226,6 @@ def process_sleepdata_file(edf_path, xml_path):
 
 
 def read_channel_signal(filename, channel, start=0, n=None):
-
     if isinstance(channel, tuple):
         c4, old_fs = read_edfrecords(filename, channel[0], start, n)
         m1, old_fs = read_edfrecords(filename, channel[1], start, n)

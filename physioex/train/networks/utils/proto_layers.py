@@ -1,5 +1,6 @@
-import torch 
+import torch
 import torch.nn as nn
+
 
 class ChannelsDropout(nn.Module):
     def __init__(self, dropout_prob=1.0):
@@ -23,7 +24,9 @@ class ChannelsDropout(nn.Module):
         mask = torch.rand(batch, device=device) < self.dropout_prob
 
         # Per ogni elemento nel batch, campiona nchan indici secondo proba
-        idx = torch.multinomial(proba.expand(batch, -1), nchan, replacement=True)  # (batch, nchan)
+        idx = torch.multinomial(
+            proba.expand(batch, -1), nchan, replacement=True
+        )  # (batch, nchan)
         batch_idx = torch.arange(batch, device=device).unsqueeze(1).expand(-1, nchan)
 
         x_shuffled = x.clone()
@@ -41,7 +44,7 @@ class TimeMasking(nn.Module):
     ):
         super(TimeMasking, self).__init__()
         self.temperature = temperature
-        
+
         windows = []
         for n in range(1, (L // 2) + 2, 2):  # n = window length
             for start in range(L - n + 1):
@@ -51,7 +54,7 @@ class TimeMasking(nn.Module):
         windows = torch.stack(windows, dim=0)  # (num_windows, L)
         self.register_buffer("windows", windows)
         self.num_windows = windows.size(0)
-        
+
         self.W = nn.Linear(hidden_size, self.num_windows, bias=False)
 
         W_omega = torch.zeros((self.num_windows, self.num_windows), dtype=torch.float32)
@@ -65,42 +68,46 @@ class TimeMasking(nn.Module):
         nn.init.normal_(self.W_omega, std=0.1)
         nn.init.normal_(self.b_omega, std=0.1)
         nn.init.normal_(self.u_omega, std=0.1)
-        
+
     def forward(self, x):
         batch_size, sequence_length, hidden_size = x.size()
-        
-        w = self.W( x ) # batch, seq, num_windows
-        
+
+        w = self.W(x)  # batch, seq, num_windows
+
         v = torch.tanh(
             torch.matmul(
-                torch.reshape(w, [batch_size * sequence_length, self.num_windows ]),
+                torch.reshape(w, [batch_size * sequence_length, self.num_windows]),
                 self.W_omega,
             )
             + torch.reshape(self.b_omega, [1, -1])
-        ) # 
+        )  #
 
-        
-        vu = torch.matmul(v, torch.reshape(self.u_omega, [-1, 1])) # (batch_size * num_windows, 1)
+        vu = torch.matmul(
+            v, torch.reshape(self.u_omega, [-1, 1])
+        )  # (batch_size * num_windows, 1)
         exps = torch.reshape(torch.exp(vu), [-1, sequence_length])
         alphas = exps / torch.reshape(torch.sum(exps, 1), [-1, 1])
 
-        alphas = alphas.reshape( batch_size, sequence_length)
+        alphas = alphas.reshape(batch_size, sequence_length)
 
-        w = torch.einsum( "bs, bsl -> bl", alphas, w )  # batch, num_windows
+        w = torch.einsum("bs, bsl -> bl", alphas, w)  # batch, num_windows
         exps = torch.exp(w)
         alphas = exps / torch.reshape(torch.sum(exps, dim=1), [batch_size, 1])
         alphas = alphas.reshape(batch_size, self.num_windows)
-        
+
         alphas = torch.nn.functional.gumbel_softmax(
             alphas, tau=self.temperature, hard=True
         )
 
         mask = torch.einsum("bs,sl -> bl", alphas, self.windows)
-        
+
         # input masking
-        x = torch.einsum("bs, bsl -> bl", mask, x)  / torch.sum(mask, dim=-1, keepdim=True)
-        
+        x = torch.einsum("bs, bsl -> bl", mask, x) / torch.sum(
+            mask, dim=-1, keepdim=True
+        )
+
         return x, mask
+
 
 class ChannelSampler(nn.Module):
     def __init__(
@@ -134,17 +141,17 @@ class ChannelSampler(nn.Module):
             )
             + torch.reshape(self.b_omega, [1, -1])
         )
-        
+
         vu = torch.matmul(v, torch.reshape(self.u_omega, [-1, 1]))
         exps = torch.reshape(torch.exp(vu), [-1, sequence_length])
         alphas = exps / torch.reshape(torch.sum(exps, 1), [-1, 1])
 
-        alphas = alphas.reshape( batch_size, sequence_length)
+        alphas = alphas.reshape(batch_size, sequence_length)
 
         alphas = torch.nn.functional.gumbel_softmax(
             alphas, tau=self.temperature, hard=True
         )
-        
+
         x = torch.einsum("bs, bsh -> bh", alphas, x)
 
         if r_alphas:

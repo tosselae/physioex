@@ -1,32 +1,24 @@
 from collections import OrderedDict
 
+import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
-from physioex.train.networks.seqsleepnet import SeqSleepNet
-from physioex.train.networks.tinysleepnet import TinySleepNet
+from physioex.train.networks.age.model import M_PSG2FEAT, Config
 from physioex.train.networks.base import SleepModule
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-
+from physioex.train.networks.seqsleepnet import (
+    AttentionLayer,
+    EpochEncoder,
+)
 
 module_config = dict()
 
 
 class SeqSexNet(SleepModule):
     def __init__(self, module_config=module_config):
-
         super(SeqSexNet, self).__init__(Net(module_config=module_config), module_config)
-
-
-from physioex.train.networks.seqsleepnet import (
-    EpochEncoder,
-    SequenceEncoder,
-    AttentionLayer,
-)
 
 
 class ConvNet(nn.Module):
@@ -92,7 +84,6 @@ class NightEncoder(nn.Module):
 
 class WholeNightNet(nn.Module):
     def __init__(self, module_config=module_config):
-
         super().__init__()
 
         module_config.update(
@@ -146,7 +137,6 @@ class WholeNightNet(nn.Module):
 
 class WholeNightAgeNet(SleepModule):
     def __init__(self, module_config=module_config):
-
         super(WholeNightAgeNet, self).__init__(
             WholeNightNet(module_config=module_config), module_config
         )
@@ -171,7 +161,6 @@ class WholeNightAgeNet(SleepModule):
         return self.opt
 
     def log_correlation(self, outputs, targets, log: str = "train"):
-
         plt.figure(figsize=(10, 6))
         sns.scatterplot(
             x=targets.view(-1).cpu().numpy(), y=outputs.view(-1).cpu().numpy()
@@ -248,7 +237,6 @@ class WholeNightAgeNet(SleepModule):
         log: str = "train",
         log_metrics: bool = False,
     ):
-
         # outputs : batch_size, 1
         # targets : batch_size, seqlen, 1
 
@@ -264,9 +252,6 @@ class WholeNightAgeNet(SleepModule):
         return super().compute_loss(embeddings, outputs, targets, log, log_metrics)
 
 
-from physioex.train.networks.age.model import M_PSG2FEAT, Config
-
-
 class Net(nn.Module):
     def __init__(self, module_config=module_config):
         super().__init__()
@@ -280,7 +265,6 @@ class Net(nn.Module):
         return y
 
     def encode(self, x: torch.Tensor):
-
         batch_size, seqlen, nchan, nsamp = x.size()
 
         x = x.permute(0, 2, 1, 3).reshape(batch_size, nchan, seqlen * nsamp)
@@ -296,7 +280,6 @@ class Net(nn.Module):
 
 class SeqAgeNet(SleepModule):
     def __init__(self, module_config=module_config):
-
         super(SeqAgeNet, self).__init__(Net(module_config), module_config)
 
         self.validation_step_outputs = []
@@ -319,7 +302,6 @@ class SeqAgeNet(SleepModule):
         return self.opt
 
     def log_correlation(self, outputs, targets, log: str = "train"):
-
         plt.figure(figsize=(10, 6))
         sns.scatterplot(
             x=targets.view(-1).cpu().numpy(), y=outputs.view(-1).cpu().numpy()
@@ -396,7 +378,6 @@ class SeqAgeNet(SleepModule):
         log: str = "train",
         log_metrics: bool = False,
     ):
-
         # outputs : batch_size, 1
         # targets : batch_size, seqlen, 1
 

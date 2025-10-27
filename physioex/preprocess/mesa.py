@@ -3,9 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
-import pyedflib
 from loguru import logger
-from scipy.signal import resample
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
@@ -13,7 +11,6 @@ from physioex.preprocess.utils.sleepdata import process_sleepdata_file
 
 
 class MESAPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -21,7 +18,6 @@ class MESAPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="mesa",
             signal_shape=[3, 3000],
@@ -33,7 +29,6 @@ class MESAPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         records_dir = os.path.join(self.dataset_folder, "raw_mesa", "polysomnography")
 
         edf_dir = os.path.join(records_dir, "edfs")
@@ -56,18 +51,15 @@ class MESAPreprocessor(Preprocessor):
         return records
 
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         edf_path, xml_path = record
 
         return process_sleepdata_file(edf_path, xml_path)
 
     def customize_table(self, table) -> pd.DataFrame:
-
         return table
 
 
 if __name__ == "__main__":
-
     p = MESAPreprocessor(data_folder="/mnt/vde/sleep-data/")
 
     p.run()

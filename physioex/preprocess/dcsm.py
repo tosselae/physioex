@@ -2,13 +2,12 @@ import os
 import zipfile
 from typing import List, Tuple
 
-import h5py
 import numpy as np
 import pandas as pd
 import pyedflib
 import requests
 from loguru import logger
-from scipy.signal import butter, filtfilt, resample, spectrogram
+from scipy.signal import resample
 from scipy.stats import mode
 from tqdm import tqdm
 
@@ -48,7 +47,6 @@ SLEEP_STAGES = ["W", "N1", "N2", "N3", "REM"]
 
 
 def read_edf(file_path):
-
     f = pyedflib.EdfReader(os.path.join(file_path, "psg.edf"))
     labels = f.getSignalLabels()
     fs = 256
@@ -113,7 +111,6 @@ def read_edf(file_path):
 
 
 class DCSMPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -121,7 +118,6 @@ class DCSMPreprocessor(Preprocessor):
         preprocessor_shape=[[4, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="dcsm",
             signal_shape=[4, 3000],
@@ -137,7 +133,6 @@ class DCSMPreprocessor(Preprocessor):
         url = "https://erda.ku.dk/public/archives/db553715ecbe1f3ac66c1dc569826eef/dcsm_dataset.zip"
 
         if not os.path.exists(os.path.join(download_dir, "data", "sleep", "DCSM")):
-
             os.makedirs(
                 os.path.join(download_dir, "data", "sleep", "DCSM"), exist_ok=True
             )
@@ -158,7 +153,6 @@ class DCSMPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         subjects_dir = os.path.join(self.dataset_folder, "data", "sleep", "DCSM")
 
         records = list(os.listdir(subjects_dir))
@@ -172,7 +166,6 @@ class DCSMPreprocessor(Preprocessor):
 
     @logger.catch
     def get_sets(self) -> Tuple[np.array, np.array, np.array]:
-
         np.random.seed(42)
 
         table = self.table.copy()
@@ -196,7 +189,6 @@ class DCSMPreprocessor(Preprocessor):
 
 
 if __name__ == "__main__":
-
     p = DCSMPreprocessor(data_folder="/home/guido/physioex-data/")
 
     p.run()

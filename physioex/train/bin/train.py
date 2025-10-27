@@ -2,20 +2,13 @@ import os
 import uuid
 
 from physioex.train.bin.parser import PhysioExParser
+from physioex.train.utils.test import test
+from physioex.train.utils.train import train
 
 
 def train_script():
-
     parser = PhysioExParser.train_parser()
 
-    # check if we are running in fast mode or not
-    if parser["fast"]:
-        from physioex.train.utils.fast_train import train
-        from physioex.train.utils.fast_test import test
-    else:
-        from physioex.train.utils.train import train
-        from physioex.train.utils.test import test
-    
     datamodule_kwargs = {
         "selected_channels": parser["selected_channels"],
         "sequence_length": parser["sequence_length"],
@@ -53,7 +46,6 @@ def train_script():
     best_checkpoint = os.path.join(train_kwargs["checkpoint_path"], best_checkpoint)
 
     if parser["test"]:
-
         test(
             datasets=parser["datasets"],
             datamodule_kwargs=datamodule_kwargs,
@@ -68,6 +60,7 @@ def train_script():
             results_path=parser["results_path"],
             aggregate_datasets=parser["aggregate"],
         )
+
 
 if __name__ == "__main__":
     train_script()

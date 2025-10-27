@@ -1,9 +1,7 @@
 import os
-from pathlib import Path
 from typing import List, Tuple
 from urllib.request import urlretrieve
 
-import h5py
 import numpy as np
 import pandas as pd
 from loguru import logger
@@ -11,12 +9,10 @@ from scipy.io import loadmat
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
-
 from physioex.preprocess.utils.sleepdata import process_sleepdata_file
 
 
 class SHHSPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -24,7 +20,6 @@ class SHHSPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="shhs",
             signal_shape=[3, 3000],
@@ -65,8 +60,11 @@ class SHHSPreprocessor(Preprocessor):
             "shhs1",
         )
 
-        get_edf_path = lambda nsrrid: os.path.join(edf_path, f"shhs1-{nsrrid}.edf")
-        get_ann_path = lambda nsrrid: os.path.join(ann_path, f"shhs1-{nsrrid}-nsrr.xml")
+        def get_edf_path(nsrrid):
+            return os.path.join(edf_path, f"shhs1-{nsrrid}.edf")
+
+        def get_ann_path(nsrrid):
+            return os.path.join(ann_path, f"shhs1-{nsrrid}-nsrr.xml")
 
         records = [
             (nsrrid, get_edf_path(nsrrid), get_ann_path(nsrrid)) for nsrrid in nsrrids
@@ -76,11 +74,10 @@ class SHHSPreprocessor(Preprocessor):
 
     @logger.catch
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         nsrrid, edf_path, ann_path = record
 
         signal, labels = process_sleepdata_file(edf_path, ann_path)
-        
+
         return signal, labels
 
     @logger.catch
@@ -136,7 +133,6 @@ class SHHSPreprocessor(Preprocessor):
 
 
 if __name__ == "__main__":
-
     p = SHHSPreprocessor(data_folder="/mnt/guido-data/")
 
     p.run()

@@ -9,7 +9,7 @@ from loguru import logger
 
 from physioex.train.networks import config as network_config
 from physioex.train.networks.base import SleepModule
-import gdown
+
 
 def get_models_table():
     check_table_path = pkg.resource_filename(
@@ -22,17 +22,16 @@ def get_models_table():
 def load_model(
     model: Union[str, Type[SleepModule]],
     model_kwargs: dict,
-    device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu"),
     ckpt_path: str = None,
     softmax: bool = False,
     summary: bool = False,
 ):
-    assert (
-        "sequence_length" in model_kwargs.keys()
-    ), "Sequence length must be provided in the model_kwargs"
-    assert (
-        "in_channels" in model_kwargs.keys()
-    ), "Number of input channels must be provided in the model_kwargs"
+    assert "sequence_length" in model_kwargs, (
+        "Sequence length must be provided in the model_kwargs"
+    )
+    assert "in_channels" in model_kwargs, (
+        "Number of input channels must be provided in the model_kwargs"
+    )
 
     seq_len = model_kwargs["sequence_length"]
     in_channels = model_kwargs["in_channels"]
@@ -44,18 +43,18 @@ def load_model(
         module, class_name = model.split(":")
         model = getattr(importlib.import_module(module), class_name)
 
-        assert (
-            ckpt_path is not None
-        ), "Checkpoint path must be provided when model is passed as a string path.to.module:Class"
+        assert ckpt_path is not None, (
+            "Checkpoint path must be provided when model is passed as a string path.to.module:Class"
+        )
     elif isinstance(model, str):
-        assert (
-            model in network_config.keys()
-        ), f"Model {model} not found in the registered models"
+        assert model in network_config.keys(), (
+            f"Model {model} not found in the registered models"
+        )
 
         table = get_models_table()
-        assert (
-            model in table["name"].values
-        ), f"Model {model} not found in the models table"
+        assert model in table["name"].values, (
+            f"Model {model} not found in the models table"
+        )
 
         table = table[
             (table["name"] == model)
@@ -93,9 +92,9 @@ def load_model(
 
         table = get_models_table()
 
-        assert (
-            model_name in table["name"].values
-        ), f"Model {model_name} not found in the models table"
+        assert model_name in table["name"].values, (
+            f"Model {model_name} not found in the models table"
+        )
 
         table = table[
             (table["name"] == model_name)
@@ -103,22 +102,19 @@ def load_model(
             & (table["in_channels"] == in_channels)
         ]
 
-        
         if "model_kwargs" in network_config[model_name]:
             default_kwargs.update(network_config[model_name]["model_kwargs"])
 
-        
         ckpt_path = table["checkpoint"].values[0]
         ckpt_path = pkg.resource_filename(
             "physioex", os.path.join("train", "models", "checkpoints", ckpt_path)
         )
     else:
         pass
-    
-    if not os.path.isfile( ckpt_path ):
-        
+
+    if not os.path.isfile(ckpt_path):
         from huggingface_hub import hf_hub_download
-        
+
         # Scarica il modello dal repository Hugging Face
         model_name = table["name"].values[0]
         filename = os.path.basename(ckpt_path)
@@ -129,17 +125,15 @@ def load_model(
                 "physioex", os.path.join("train", "models", "checkpoints")
             ),
         )
-    
+
     default_kwargs.update(model_kwargs)
     model_kwargs = default_kwargs
 
     model = (
-        model.load_from_checkpoint(ckpt_path, 
-            module_config=model_kwargs,
-            map_location = torch.device( "cpu" )
-        )
-        .eval()
-        #.to(device)
+        model.load_from_checkpoint(
+            ckpt_path, module_config=model_kwargs, map_location=torch.device("cpu")
+        ).eval()
+        # .to(device)
     )
 
     if softmax:

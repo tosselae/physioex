@@ -1,59 +1,49 @@
 import os
-from pathlib import Path
+import shutil
 from typing import List, Tuple
-from urllib.request import urlretrieve
-import shutil 
 
 import numpy as np
 import pandas as pd
 from loguru import logger
-from scipy.io import loadmat
 from scipy.signal import filtfilt, firwin, resample
-import pyedflib
 from sklearn.model_selection import StratifiedKFold, train_test_split
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
-
-from physioex.preprocess.utils.sleepdata import get_channel_from_available, get_channels, read_channel_signal
+from physioex.preprocess.utils.sleepdata import (
+    get_channel_from_available,
+    get_channels,
+    read_channel_signal,
+)
 
 POSSIBLE_EEG_CHANNELS = [
     # "EEG C4-A1",
     "EEG C4-REF",
-    # "EEG C3-A2", 
-    "EEG C3-REF" 
+    # "EEG C3-A2",
+    "EEG C3-REF",
 ]
 
-POSSIBLE_EOG_CHANNELS = [
-    ('EEG EOG1-REF', 'EEG EOG2-REF')
-]
+POSSIBLE_EOG_CHANNELS = [("EEG EOG1-REF", "EEG EOG2-REF")]
 
-POSSIBLE_EMG_CHANNELS = [
-    "EMG CHIN",
-    "EMG1",
-    "EMG2",
-    "EMG3",
-    "EMG4",
-    "EMG5"
-]
+POSSIBLE_EMG_CHANNELS = ["EMG CHIN", "EMG1", "EMG2", "EMG3", "EMG4", "EMG5"]
+
 
 def read_edf(edf_path, tsv_path):
+    stages_map = {"Wake": 0, "S1": 1, "S2": 2, "S3": 3, "REM": 4}
 
-    stages_map = {
-        "Wake": 0,
-        "S1": 1,
-        "S2": 2, 
-        "S3": 3, 
-        "REM": 4
-    }
+    df = pd.read_csv(
+        tsv_path,
+        sep="\t",
+        usecols=(0, 1, 2),
+        names=("start", "end", "stage"),
+        skiprows=8,
+    )
+    stages = [stages_map[s] for s in df["stage"]]
+    scores_start = df.iloc[0]["start"]
+    scores_end = df.iloc[-1]["end"]
 
-    df = pd.read_csv(tsv_path, sep='\t', usecols=(0,1,2), names=('start', 'end', 'stage'), skiprows=8)
-    stages = [stages_map[s] for s in df['stage']]
-    scores_start = df.iloc[0]['start']
-    scores_end = df.iloc[-1]['end']
-    
-    fs=100
-    epoch_second=30
+    fs = 100
+    epoch_second = 30
 
     available_channels = get_channels(edf_path)
     eeg_channel = get_channel_from_available(available_channels, POSSIBLE_EEG_CHANNELS)
@@ -62,7 +52,9 @@ def read_edf(edf_path, tsv_path):
         print(f"Available channels: {available_channels}")
         return None, None
     else:
-        eeg, old_fs = read_channel_signal(edf_path, eeg_channel, scores_start, scores_end - scores_start)
+        eeg, old_fs = read_channel_signal(
+            edf_path, eeg_channel, scores_start, scores_end - scores_start
+        )
 
     # Creazione del filtro FIR bandpass
     Nfir = 500
@@ -80,7 +72,9 @@ def read_edf(edf_path, tsv_path):
         print(f"Available channels: {available_channels}")
         return None, None
     else:
-        eog, old_fs = read_channel_signal(edf_path, eog_channel, scores_start, scores_end - scores_start)
+        eog, old_fs = read_channel_signal(
+            edf_path, eog_channel, scores_start, scores_end - scores_start
+        )
 
     # filtering and resampling
     eog = filtfilt(b_band, 1, eog)
@@ -94,7 +88,9 @@ def read_edf(edf_path, tsv_path):
         print(f"Available channels: {available_channels}")
         return None, None
     else:
-        emg, old_fs = read_channel_signal(edf_path, emg_channel, scores_start, scores_end - scores_start)
+        emg, old_fs = read_channel_signal(
+            edf_path, emg_channel, scores_start, scores_end - scores_start
+        )
 
     # filtering and resampling
     b_band = firwin(Nfir + 1, 10, pass_zero=False, fs=old_fs)
@@ -112,11 +108,10 @@ def read_edf(edf_path, tsv_path):
 
     signal = np.transpose(signal, (0, 2, 1))
 
-    return signal.astype(np.float32), stages.astype(int)    
+    return signal.astype(np.float32), stages.astype(int)
 
 
 class AlzheimersPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -124,7 +119,6 @@ class AlzheimersPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="alzheimers",
             signal_shape=[3, 3000],
@@ -134,18 +128,18 @@ class AlzheimersPreprocessor(Preprocessor):
             data_folder=data_folder,
         )
 
-        self.raw_data_folder = os.path.join(self.dataset_folder, 'Data')
+        self.raw_data_folder = os.path.join(self.dataset_folder, "Data")
         self.original_subject = []
         self.group = []
 
-        remove_subject = os.path.join(self.raw_data_folder, 'AD014') # edf file is corrupt
+        remove_subject = os.path.join(
+            self.raw_data_folder, "AD014"
+        )  # edf file is corrupt
         if os.path.exists(remove_subject):
-            shutil.rmtree(remove_subject)  
-
+            shutil.rmtree(remove_subject)
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         records_dir = os.path.join(self.raw_data_folder)
         records = os.listdir(records_dir)
 
@@ -153,13 +147,12 @@ class AlzheimersPreprocessor(Preprocessor):
 
     @logger.catch
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         for file in os.listdir(os.path.join(self.raw_data_folder, record)):
             if file.endswith(".edf"):
                 edf_path = os.path.join(self.raw_data_folder, record, file)
             elif file.endswith(".tsv"):
                 tsv_path = os.path.join(self.raw_data_folder, record, file)
-        
+
         signal, labels = read_edf(edf_path, tsv_path)
 
         if signal is not None and labels is not None:
@@ -182,8 +175,8 @@ class AlzheimersPreprocessor(Preprocessor):
             pd.DataFrame: The customized dataset table.
         """
 
-        table['original_subject'] = self.original_subject
-        table['group'] = self.group
+        table["original_subject"] = self.original_subject
+        table["group"] = self.group
 
         return table
 
@@ -200,8 +193,8 @@ class AlzheimersPreprocessor(Preprocessor):
 
         skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_state)
 
-        X = self.table['subject_id']
-        y = self.table['group']
+        X = self.table["subject_id"]
+        y = self.table["group"]
 
         train_subjects = []
         valid_subjects = []
@@ -216,20 +209,18 @@ class AlzheimersPreprocessor(Preprocessor):
             df_train, df_val = train_test_split(
                 df_train_val,
                 test_size=0.1765,  # 0.15 / (0.15 + 0.7)
-                stratify=df_train_val['group'],
-                random_state=random_state
+                stratify=df_train_val["group"],
+                random_state=random_state,
             )
 
-            train_subjects.append(df_train['subject_id'].to_numpy())
-            valid_subjects.append(df_val['subject_id'].to_numpy())
-            test_subjects.append(df_test['subject_id'].to_numpy())
+            train_subjects.append(df_train["subject_id"].to_numpy())
+            valid_subjects.append(df_val["subject_id"].to_numpy())
+            test_subjects.append(df_test["subject_id"].to_numpy())
 
         return train_subjects, valid_subjects, test_subjects
 
 
-
 if __name__ == "__main__":
-
     p = AlzheimersPreprocessor(data_folder="/home/coder/sleep/sleep-data/")
 
     p.run()

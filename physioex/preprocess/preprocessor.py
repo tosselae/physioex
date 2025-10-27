@@ -1,7 +1,4 @@
 import os
-import pickle
-import stat
-import time
 from pathlib import Path
 from typing import Callable, List, Tuple
 
@@ -14,7 +11,6 @@ from physioex.preprocess.utils.signal import OnlineVariance
 
 
 class Preprocessor:
-
     def __init__(
         self,
         dataset_name: str,
@@ -42,13 +38,15 @@ class Preprocessor:
                 The folder where the dataset is stored. If None, the default data folder is used.
         """
 
-        assert (
-            len(signal_shape) == 2
-        ), "ERR: signal_shape should be a list of 2 elements n_channels, n_timestamps"
+        assert len(signal_shape) == 2, (
+            "ERR: signal_shape should be a list of 2 elements n_channels, n_timestamps"
+        )
 
         assert (
             len(preprocessors_name) == len(preprocessors) == len(preprocessors_shape)
-        ), "ERR: lists preprocessors_name, preprocessors e preprocessors_shape should match first dimension"
+        ), (
+            "ERR: lists preprocessors_name, preprocessors e preprocessors_shape should match first dimension"
+        )
 
         self.data_folder = data_folder
 
@@ -248,9 +246,9 @@ class Preprocessor:
         train_subjects, valid_subjects, test_subjects = self.get_sets()
 
         # assert the same number of folds in each split
-        assert (
-            len(train_subjects) == len(valid_subjects) == len(test_subjects)
-        ), "ERR: number of folds in each split should be the same"
+        assert len(train_subjects) == len(valid_subjects) == len(test_subjects), (
+            "ERR: number of folds in each split should be the same"
+        )
 
         for fold in range(len(train_subjects)):
             # add a "fold_{fold}" column to the table with the split of the subject ( train, valid or test )

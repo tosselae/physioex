@@ -1,14 +1,39 @@
-import os
-import pickle
 from typing import Callable, List
 
 import numpy as np
-import pandas as pd
-import pytorch_lightning as pl
 import torch
 from loguru import logger
 
 from physioex.data.datareader import DataReader
+
+import torch
+
+DTYPE = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float32
+
+def merge_scaling(means, std_devs, sample_sizes):    
+    # cast means and stds to float64
+
+    means = [ mean.to( torch.float64) for mean in means ]
+    std_devs = [ std.to( torch.float64) for std in std_devs ]
+
+    total_samples = sum(sample_sizes)
+    
+    # Calcolo media ponderata
+    total_mean = sum(M * N for M, N in zip(means, sample_sizes)) / total_samples
+    
+    # Calcolo varianza totale
+    total_variance = (
+        sum(
+            N * (D**2 + (M - total_mean)**2)
+            for M, D, N in zip(means, std_devs, sample_sizes)
+        ) / total_samples
+    )
+    
+    # Assicurati che la varianza non sia negativa (potrebbe accadere per errori di arrotondamento)
+    total_variance = torch.clamp(total_variance, min=0.0) + 1e-10
+    
+    total_std_dev = torch.sqrt(total_variance)
+    return total_mean.to( DTYPE ), total_std_dev.to( DTYPE )
 
 
 class PhysioExDataset(torch.utils.data.Dataset):
@@ -32,6 +57,9 @@ class PhysioExDataset(torch.utils.data.Dataset):
         self.dataset_idx = []
 
         offset = 0
+
+        means, stds, sizes = [], [], []
+
         for i, dataset in enumerate(datasets):
             reader = DataReader(
                 data_folder=data_folder,
@@ -50,7 +78,16 @@ class PhysioExDataset(torch.utils.data.Dataset):
             self.tables.append(reader.get_table())
             self.readers += [reader]
 
-        self.dataset_idx = np.array(self.dataset_idx, dtype=np.uint8)
+            means.append( reader.reader.mean )
+            stds.append( reader.reader.std )
+            sizes.append( reader.reader.get_n_subjects() )
+
+        if len( self.readers ) > 1:
+            self.mean, self.std = merge_scaling( means, stds, sizes )
+        else:
+            self.mean, self.std = self.readers[0].reader.mean, self.readers[0].reader.std
+        
+        self.dataset_idx = np.array(self.dataset_idx, dtype=np.int8)
         # set the table fold to a random fold by default
         self.split()
         self.target_transform = target_transform
@@ -61,6 +98,15 @@ class PhysioExDataset(torch.utils.data.Dataset):
     def __len__(self):
         return self.len
 
+    def set_scaling(self, mean : torch.Tensor, std : torch.Tensor ):
+        self.mean = mean
+        self.std = std
+
+        return
+    
+    def get_scaling(self):
+        return self.mean, self.std
+
     def split(self, fold: int = -1, dataset_idx: int = -1):
         assert dataset_idx < len(self.tables), "ERR: dataset_idx out of range"
 
@@ -69,9 +115,9 @@ class PhysioExDataset(torch.utils.data.Dataset):
             for i, table in enumerate(self.tables):
                 num_folds = [col for col in table.columns if "fold_" in col]
                 num_folds = len(num_folds)
-                selcted_fold = np.random.randint(0, num_folds)
+                selected_fold = np.random.randint(0, num_folds)
 
-                self.tables[i]["split"] = table[f"fold_{selcted_fold}"].map(
+                self.tables[i]["split"] = self.tables[i][f"fold_{selected_fold}"].map(
                     {"train": 0, "valid": 1, "test": 2}
                 )
         elif fold == -1 and dataset_idx != -1:
@@ -90,7 +136,7 @@ class PhysioExDataset(torch.utils.data.Dataset):
                     {"train": 0, "valid": 1, "test": 2}
                 )
         else:
-            self.tables[dataset_idx]["split"] = table[f"fold_{fold}"].map(
+            self.tables[dataset_idx]["split"] = self.tables[dataset_idx][f"fold_{fold}"].map(
                 {"train": 0, "valid": 1, "test": 2}
             )
 
@@ -111,6 +157,8 @@ class PhysioExDataset(torch.utils.data.Dataset):
         if self.target_transform is not None:
             y = self.target_transform(y)
 
+        X = (X - self.mean) / self.std 
+        
         return X, y, subjects, dataset_idx
 
     def get_sets(self):
@@ -123,12 +171,11 @@ class PhysioExDataset(torch.utils.data.Dataset):
 
         for table in self.tables:
             for _, row in table.iterrows():
-
                 num_windows = max(row["num_windows"] - self.L, 0) + 1
 
                 indices = np.arange(
                     start=start_index, stop=start_index + num_windows
-                ).astype(np.uint32)
+                ).astype(np.int32)
 
                 start_index += num_windows
 

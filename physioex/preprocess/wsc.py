@@ -1,3 +1,4 @@
+import datetime
 import os
 from typing import List, Tuple
 
@@ -5,15 +6,16 @@ import numpy as np
 import pandas as pd
 import pyedflib
 from loguru import logger
-from scipy.signal import resample
+from scipy.signal import filtfilt, firwin, resample
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
-from physioex.preprocess.utils.sleepdata import process_sleepdata_file
+
+fs = 100
+Nfir = 100
 
 
 class WSCPreprocessor(Preprocessor):
-
     def __init__(
         self,
         visit: int = 1,
@@ -22,7 +24,6 @@ class WSCPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         assert visit in [1, 2, 3], "Visit must be 1, 2 or 3"
 
         self.visit = visit
@@ -38,8 +39,9 @@ class WSCPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
-        records_dir = os.path.join(self.dataset_folder, "..", "raw_wsc", "polysomnography")
+        records_dir = os.path.join(
+            self.dataset_folder, "..", "raw_wsc", "polysomnography"
+        )
 
         records = os.listdir(records_dir)
         records = [
@@ -57,7 +59,6 @@ class WSCPreprocessor(Preprocessor):
         return records
 
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         edf_path, stg_path, all_score_path = record
 
         # check if the allscore or stg file is present
@@ -78,8 +79,7 @@ class WSCPreprocessor(Preprocessor):
             stages = stages[:-1]
 
         if len(signal) != len(stages):
-
-            logger.error(f"Error: signal and stages have different lengths")
+            logger.error("Error: signal and stages have different lengths")
 
             print(signal.shape, stages.shape)
 
@@ -100,7 +100,6 @@ class WSCPreprocessor(Preprocessor):
         return signal, stages
 
     def customize_table(self, table) -> pd.DataFrame:
-
         return table
 
 
@@ -117,8 +116,7 @@ map_stages = {
 
 
 def read_stg_file(stg_file_path: str):
-
-    with open(stg_file_path, "r") as f:
+    with open(stg_file_path) as f:
         lines = f.readlines()
 
     if lines[0] == "Epoch\tUser-Defined Stage\tCAST-Defined Stage\n":
@@ -142,12 +140,8 @@ def read_stg_file(stg_file_path: str):
     return stages[:, 1]
 
 
-import datetime
-
-
 def read_allscore_file(all_score_path: str):
-
-    with open(all_score_path, "r", encoding="latin1") as f:
+    with open(all_score_path, encoding="latin1") as f:
         lines = f.readlines()
 
     # get the START RECORDING LINE to get the start time of the recording
@@ -218,16 +212,7 @@ def read_allscore_file(all_score_path: str):
     return np.array(stages)
 
 
-import pyedflib
-
-from scipy.signal import filtfilt, firwin, resample
-
-fs = 100
-Nfir = 100
-
-
 def read_edf_file(edf_file_path: str):
-
     f = pyedflib.EdfReader(edf_file_path)
 
     # get all the channels available
@@ -235,7 +220,7 @@ def read_edf_file(edf_file_path: str):
 
     eeg_label = ["C3_M2", "C3_M1", "C4_M1", "Fz_AVG", "C3_AVG"]
     try:
-        eeg_index = [labels.index(l) for l in eeg_label if l in labels][0]
+        eeg_index = [labels.index(lab) for lab in eeg_label if lab in labels][0]
     except IndexError:
         logger.error(f"Error: no EEG channel found in {edf_file_path}")
         print(labels)
@@ -264,7 +249,7 @@ def read_edf_file(edf_file_path: str):
     chinlabel = ["chin", "cchin_l", "cchin_r", "rchin_l"]
 
     try:
-        chinindex = [labels.index(l) for l in chinlabel if l in labels][0]
+        chinindex = [labels.index(lab) for lab in chinlabel if lab in labels][0]
     except IndexError:
         logger.error(f"Error: no EMG channel found in {edf_file_path}")
         print(labels)
@@ -300,7 +285,6 @@ def read_edf_file(edf_file_path: str):
 
 
 if __name__ == "__main__":
-
     WSCPreprocessor(visit=1, data_folder="/mnt/vde/sleep-data/").run()
     WSCPreprocessor(visit=2, data_folder="/mnt/vde/sleep-data/").run()
     WSCPreprocessor(visit=3, data_folder="/mnt/vde/sleep-data/").run()

@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
 
-from typing import Union, Callable
-
 
 def expected_line_integral(fn: callable, P: torch.Tensor, baselines: torch.Tensor):
-
     SG = 0
 
     x = baselines[0]
@@ -35,7 +32,6 @@ def step_integral(
     path: callable,
     jac_path: callable = None,
 ):
-
     def distance(x: torch.Tensor):
         return -torch.cdist(fn(x), P, p=2).view(-1)
 
@@ -66,7 +62,6 @@ class ExpectedGradients(nn.Module):
         self.fn = f
 
     def forward(self, P: torch.Tensor, channel_index: int = 0):
-
         def fn(x: torch.Tensor):
             return self.fn(x)[0, channel_index]
 

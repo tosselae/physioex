@@ -2,13 +2,15 @@ import argparse
 
 from physioex.preprocess.dcsm import DCSMPreprocessor
 from physioex.preprocess.hmc import HMCPreprocessor
+from physioex.preprocess.kornum import KornumPreprocessor
 from physioex.preprocess.mass import MASSPreprocessor
 from physioex.preprocess.mesa import MESAPreprocessor
 from physioex.preprocess.mros import MROSPreprocessor
 from physioex.preprocess.shhs import SHHSPreprocessor
-from physioex.preprocess.kornum import KornumPreprocessor
 from physioex.preprocess.sleepedf import SLEEPEDFPreprocessor
 from physioex.preprocess.sleepyrat import SleepyRatPreprocessor
+
+import importlib
 
 preprocessors = {
     "dcsm": DCSMPreprocessor,
@@ -21,8 +23,6 @@ preprocessors = {
     "sleepedf": SLEEPEDFPreprocessor,
     "sleepyrat": SleepyRatPreprocessor,
 }
-
-import importlib
 
 
 def main():
@@ -72,7 +72,7 @@ def main():
     if args["config"] is not None:
         import yaml
 
-        with open(args["config"], "r") as f:
+        with open(args["config"]) as f:
             config = yaml.safe_load(f)
         args.update(config)
 
@@ -88,10 +88,9 @@ def main():
     preprocessor_args["data_folder"] = args["data_folder"]
 
     if "preprocessor_kwargs" not in args.keys():
-        args["preprocessor_kwargs"] = None 
+        args["preprocessor_kwargs"] = None
 
     if args["preprocessor_kwargs"] is not None:
-
         # if the user specifies preprocessors in the kwargs they need to be imported
 
         if "preprocessors" in args["preprocessor_kwargs"]:

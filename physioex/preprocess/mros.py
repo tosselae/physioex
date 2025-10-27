@@ -3,9 +3,7 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
-import pyedflib
 from loguru import logger
-from scipy.signal import resample
 
 from physioex.preprocess.preprocessor import Preprocessor
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing
@@ -13,7 +11,6 @@ from physioex.preprocess.utils.sleepdata import process_sleepdata_file
 
 
 class MROSPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -21,7 +18,6 @@ class MROSPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="mros",
             signal_shape=[3, 3000],
@@ -33,7 +29,6 @@ class MROSPreprocessor(Preprocessor):
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
-
         table = os.path.join(
             self.dataset_folder,
             "mros_raw",
@@ -61,12 +56,11 @@ class MROSPreprocessor(Preprocessor):
             "visit1",
         )
 
-        get_edf_path = lambda nsrrid: os.path.join(
-            edf_path, f"mros-visit1-{nsrrid}.edf"
-        )
-        get_ann_path = lambda nsrrid: os.path.join(
-            ann_path, f"mros-visit1-{nsrrid}-nsrr.xml"
-        )
+        def get_edf_path(nsrrid):
+            return os.path.join(edf_path, f"mros-visit1-{nsrrid}.edf")
+
+        def get_ann_path(nsrrid):
+            return os.path.join(ann_path, f"mros-visit1-{nsrrid}-nsrr.xml")
 
         records = [
             (nsrrid, get_edf_path(nsrrid), get_ann_path(nsrrid)) for nsrrid in nsrrids
@@ -76,7 +70,6 @@ class MROSPreprocessor(Preprocessor):
 
     @logger.catch
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         nsrrid, edf_path, ann_path = record
 
         signal, labels = process_sleepdata_file(edf_path, ann_path)
@@ -112,7 +105,6 @@ class MROSPreprocessor(Preprocessor):
 
 
 if __name__ == "__main__":
-
     p = MROSPreprocessor(data_folder="/mnt/vde/sleep-data/")
 
     p.run()

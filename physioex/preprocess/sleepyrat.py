@@ -8,24 +8,31 @@ from loguru import logger
 from scipy.signal import filtfilt, firwin, resample
 
 from physioex.preprocess.preprocessor import Preprocessor
+from physioex.preprocess.utils.mousedata import (
+    POSSIBLE_EEG1_CHANNELS,
+    POSSIBLE_EEG2_CHANNELS,
+    POSSIBLE_EMG_CHANNELS,
+    get_channel_from_available,
+    get_channels,
+    read_channel_signal,
+)
 from physioex.preprocess.utils.signal import xsleepnet_preprocessing_mouse
-
-from physioex.preprocess.utils.mousedata import get_channels, get_channel_from_available, read_channel_signal, POSSIBLE_EEG1_CHANNELS, POSSIBLE_EEG2_CHANNELS, POSSIBLE_EMG_CHANNELS
 
 
 class SleepyRatPreprocessor(Preprocessor):
-
     def __init__(
         self,
-        cohorts: List[str] = ["A", "D"], # Only healthy mice, but the code supports all cohorts
-        scorer: int = 2, # 1 or 2
-        only_test: bool = True, # if True, all data is assigned to test set
+        cohorts: List[str] = [
+            "A",
+            "D",
+        ],  # Only healthy mice, but the code supports all cohorts
+        scorer: int = 2,  # 1 or 2
+        only_test: bool = True,  # if True, all data is assigned to test set
         preprocessors_name: List[str] = ["xsleepnet_mouse"],
         preprocessors=[xsleepnet_preprocessing_mouse],
         preprocessor_shape=[[3, 17, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="sleepyrat",
             signal_shape=[3, 512],
@@ -34,11 +41,10 @@ class SleepyRatPreprocessor(Preprocessor):
             preprocessors_shape=preprocessor_shape,
             data_folder=data_folder,
         )
-        
+
         self.cohorts = [c.upper() for c in cohorts]
         self.scorer = scorer
         self.only_test = only_test
-
 
     @logger.catch
     def get_subjects_records(self) -> List[str]:
@@ -51,18 +57,22 @@ class SleepyRatPreprocessor(Preprocessor):
 
         id_list = []
         location_list = []
-        
+
         for cohort in self.cohorts:
-            recordings_path = Path(self.dataset_folder) / "original_data" / f"Cohort{cohort}" / "recordings"
+            recordings_path = (
+                Path(self.dataset_folder)
+                / "original_data"
+                / f"Cohort{cohort}"
+                / "recordings"
+            )
             for recording in recordings_path.glob("*.edf"):
                 id_list.append(recording.stem)
                 location_list.append(str(recording))
-            
-        self.database = pd.DataFrame({'id': id_list, 'location': location_list})
+
+        self.database = pd.DataFrame({"id": id_list, "location": location_list})
 
         return self.database.id.tolist()
-    
-    
+
     def process_scorings(self, scorings_path):
         df = pd.read_csv(scorings_path, header=None)
 
@@ -88,13 +98,12 @@ class SleepyRatPreprocessor(Preprocessor):
         stages = labels.apply(rename_class)
 
         return stages.to_list()
-        
-        
+
     def process_recording(self, edf_path, stages):
-        '''
+        """
         mousedata:process_sleepdata_file, adapted for SleepyRat dataset
-        '''
-        
+        """
+
         fs = 128
         epoch_second = 4
 
@@ -103,8 +112,10 @@ class SleepyRatPreprocessor(Preprocessor):
         name = os.path.splitext(name)[0]
 
         available_channels = get_channels(edf_path)
-        
-        eeg1_channel = get_channel_from_available(available_channels, POSSIBLE_EEG1_CHANNELS)
+
+        eeg1_channel = get_channel_from_available(
+            available_channels, POSSIBLE_EEG1_CHANNELS
+        )
 
         if eeg1_channel is None:
             print(f"Error: no EEG1 channel found in {edf_path}")
@@ -125,7 +136,9 @@ class SleepyRatPreprocessor(Preprocessor):
         if fs != old_fs:
             eeg1 = resample(eeg1, int(len(eeg1) * fs / old_fs))
 
-        eeg2_channel = get_channel_from_available(available_channels, POSSIBLE_EEG2_CHANNELS)
+        eeg2_channel = get_channel_from_available(
+            available_channels, POSSIBLE_EEG2_CHANNELS
+        )
         if eeg2_channel is None:
             print(f"Error: no EEG2 channel found in {edf_path}")
             print(f"Available channels: {available_channels}")
@@ -139,7 +152,9 @@ class SleepyRatPreprocessor(Preprocessor):
         if fs != old_fs:
             eeg2 = resample(eeg2, int(len(eeg2) * fs / old_fs))
 
-        emg_channel = get_channel_from_available(available_channels, POSSIBLE_EMG_CHANNELS)
+        emg_channel = get_channel_from_available(
+            available_channels, POSSIBLE_EMG_CHANNELS
+        )
         if emg_channel is None:
             print(f"Error: no EMG channel found in {edf_path}")
             print(f"Available channels: {available_channels}")
@@ -179,17 +194,16 @@ class SleepyRatPreprocessor(Preprocessor):
         # remove the invalid epochs
         stages = np.delete(stages, invalid_epochs)
         signal = np.delete(signal, invalid_epochs, axis=0)
-        
+
         signal = np.transpose(signal, (0, 2, 1))
 
         return signal.astype(np.float32), stages.astype(int)
-        
-        
+
     @logger.catch
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
         """
         Reads recording belonging to 'record'.
-        
+
         Args:
             record (str): The identifier of the subject to be read.
 
@@ -197,20 +211,20 @@ class SleepyRatPreprocessor(Preprocessor):
             Tuple[np.array, np.array]: A tuple containing the signal and labels with shapes
             [n_windows, n_channels, n_timestamps] and [n_windows], respectively.
         """
-                
-        recording_path = self.database[self.database['id'] == record]['location'].iloc[0]
-        
+
+        recording_path = self.database[self.database["id"] == record]["location"].iloc[
+            0
+        ]
+
         scorings_path = recording_path.replace("recordings", "scorings")
         scorings_path = scorings_path.replace("edf", "csv")
-        
+
         stages = self.process_scorings(scorings_path)
         signal, stages = self.process_recording(recording_path, stages)
-                        
-        return signal, stages    
-        
+
+        return signal, stages
 
     def get_sets(self) -> Tuple[List[np.array], List[np.array], List[np.array]]:
-
         np.random.seed(42)
 
         if self.only_test:
@@ -219,10 +233,7 @@ class SleepyRatPreprocessor(Preprocessor):
             return super().get_sets()
 
 
-
-
 if __name__ == "__main__":
-
     p = SleepyRatPreprocessor(data_folder="/esat/biomeddata/ggagliar/")
 
     p.run()

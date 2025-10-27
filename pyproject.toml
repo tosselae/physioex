@@ -1,86 +1,51 @@
 [build-system]
-requires = ["setuptools>=42", "wheel", "setuptools_scm[toml]>=6.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "physioex"
-version = "1.0.9"
+dynamic = ["version"]
 description = "A python package for explainable sleep staging via deep learning"
-readme = { file = "README.md", content-type = "text/markdown" }
+readme = {"file" = "README.md", "content-type" = "text/markdown"}
+requires-python = ">=3.11"
 authors = [
     { name = "Guido Gagliardi", email = "guido.gagliardi@phd.unipi.it" }
 ]
-license = {file = "LICENSE"}
+license = {text = "MIT"}
 dependencies = [
-    # Base dependencies are in optional-dependencies sections
-    # Use: pip install -e .[standalone] or pip install -e .[hpc]
+    "torch>=2.7.0",
+    "torchmetrics>=1.8.0", 
+    "pytorch_lightning>=2.5.0",
+    "lightning>=2.5.0",
+    
+    "matplotlib>=3.10.0",
+    "scikit_learn>=1.7.0",
+    "scipy>=1.16.0",
+    "seaborn>=0.13.0",
+
+    "boto3>=1.40.0",
+    "botocore>=1.40.0",
+    
+    "huggingface_hub>=0.34.0",
+    "vector_quantize_pytorch>=1.22.0",
+    "pytorch_metric_learning>=2.8.0",
+    "captum>=0.6.0",
+    "dirhash>=0.5.0",
+    "joblib>=1.4.0",
+    "loguru>=0.7.0",
+    "psg_utils>=0.1.7",
+    "pyedflib>=0.1.42",
+    "pyunpack>=0.3",
+    "rarfile>=4.2",
+    "wfdb>=4.3.0",
+    "braindecode>=1.0.0",
+    "ml_dtypes>=0.5.0",
+    "umap-learn>=0.5.0",  
 ]
 
-[project.optional-dependencies]
-# For HPC environments with pre-loaded modules (minimal dependencies)
-hpc = [
-    "huggingface_hub",
-    "vector_quantize_pytorch",
-    "pytorch_metric_learning",
-    "captum",
-    "dirhash",
-    "joblib",
-    "loguru",
-    "numpy",
-    "pandas",
-    "psg_utils",
-    "pyEDFlib",
-    "pyunpack",
-    "PyYAML",
-    "rarfile",
-    "requests",
-    "seaborn",
-    "setuptools",
-    "tqdm",
-    "wfdb",
-]
+[tool.hatch.version]
+path = "physioex/__init__.py"
 
-# For standalone environments (all dependencies)
-standalone = [
-    "huggingface_hub",
-    "vector_quantize_pytorch",
-    "tensorboard",
-    "boto3",
-    "botocore",
-    "braindecode",
-    "captum",
-    "dirhash",
-    "h5py",
-    "joblib",
-    "lightning",  
-    "loguru",
-    "matplotlib",
-    "numpy",
-    "pandas",
-    "psg_utils",
-    "pyEDFlib",
-    "pytorch_lightning",  
-    "pytorch_metric_learning",
-    "pyunpack",
-    "PyYAML",
-    "rarfile",
-    "requests",
-    "scikit_learn",
-    "scipy",
-    "seaborn",
-    "setuptools",
-    "torch",  
-    "torchmetrics", 
-    "tqdm",
-    "wfdb",
-]
-
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["physioex*"]
 
 [project.scripts]
 train = "physioex.train.bin.train:train_script"

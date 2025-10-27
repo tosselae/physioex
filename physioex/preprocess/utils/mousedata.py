@@ -1,13 +1,12 @@
 import math
 import os
-import re
-import xml.etree.ElementTree as ET
 import warnings
 
 import numpy as np
 import pandas as pd
 import pyedflib
 from scipy.signal import filtfilt, firwin, resample
+
 
 def read_edfrecords(filename, channel):
     # Apri il file EDF
@@ -46,21 +45,24 @@ def next_power_of_2(x):
 
 
 def read_sleepdata_annotation(filename):
-    
     def map_labels(row):
         # 0=Wake, 1=NREM, 2=REM, 3=Artifact
 
         if (row != 1) & (row != 2) & (row != 3):
-            return 3 
+            return 3
         else:
-            return int(row)-1
+            return int(row) - 1
 
     with warnings.catch_warnings():
-        warnings.simplefilter("ignore", pd.errors.ParserWarning) # ignore warning, it works properly
-        df = pd.read_csv(filename, skiprows=9, engine='python', sep='\t', index_col=False)
-    
-    stages = df.iloc[:, 4] # get the stages column
-    
+        warnings.simplefilter(
+            "ignore", pd.errors.ParserWarning
+        )  # ignore warning, it works properly
+        df = pd.read_csv(
+            filename, skiprows=9, engine="python", sep="\t", index_col=False
+        )
+
+    stages = df.iloc[:, 4]  # get the stages column
+
     # code for filtering based on time. might be useful in the future.
     # zt_times = df.apply(lambda x: datetime.strptime(x['Time'][5:], '%H:%M:%S').time(), axis=1) # extract time from string
     # zt_times = zt_times.apply(lambda x: subtract_hours(x, 7)) # convert to ZT time
@@ -70,8 +72,8 @@ def read_sleepdata_annotation(filename):
 
     return stages
 
-def process_sleepdata_file(edf_path, tsv_path):
 
+def process_sleepdata_file(edf_path, tsv_path):
     fs = 100
     epoch_second = 4
 
@@ -80,15 +82,17 @@ def process_sleepdata_file(edf_path, tsv_path):
     name = os.path.splitext(name)[0]
 
     available_channels = get_channels(edf_path)
-    
+
     try:
         stages = read_sleepdata_annotation(tsv_path)
-    except Exception as e:
+    except Exception:
         print(f"Error reading file: {tsv_path}")
-        print(f"skipping subject")
+        print("skipping subject")
         return None, None
 
-    eeg1_channel = get_channel_from_available(available_channels, POSSIBLE_EEG1_CHANNELS)
+    eeg1_channel = get_channel_from_available(
+        available_channels, POSSIBLE_EEG1_CHANNELS
+    )
 
     if eeg1_channel is None:
         print(f"Error: no EEG1 channel found in {edf_path}")
@@ -109,7 +113,9 @@ def process_sleepdata_file(edf_path, tsv_path):
     if fs != old_fs:
         eeg1 = resample(eeg1, int(len(eeg1) * fs / old_fs))
 
-    eeg2_channel = get_channel_from_available(available_channels, POSSIBLE_EEG2_CHANNELS)
+    eeg2_channel = get_channel_from_available(
+        available_channels, POSSIBLE_EEG2_CHANNELS
+    )
     if eeg2_channel is None:
         print(f"Error: no EEG2 channel found in {edf_path}")
         print(f"Available channels: {available_channels}")
@@ -163,13 +169,13 @@ def process_sleepdata_file(edf_path, tsv_path):
     # remove the invalid epochs
     stages = np.delete(stages, invalid_epochs)
     signal = np.delete(signal, invalid_epochs, axis=0)
-    
+
     signal = np.transpose(signal, (0, 2, 1))
 
     return signal.astype(np.float32), stages.astype(int)
 
-def read_channel_signal(filename, channel):
 
+def read_channel_signal(filename, channel):
     signal, old_fs = read_edfrecords(filename, channel)
 
     return signal, old_fs

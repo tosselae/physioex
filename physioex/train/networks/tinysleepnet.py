@@ -1,9 +1,4 @@
-from collections import OrderedDict
-
-import torch
 import torch.nn as nn
-import torch.optim as optim
-from pytorch_lightning.utilities.types import OptimizerLRScheduler
 
 from physioex.train.networks.base import SleepModule
 
@@ -119,7 +114,6 @@ class Net(nn.Module):
 
 class TinySleepNet(SleepModule):
     def __init__(self, module_config=module_config):
-
         module_config["n_rnn_units"] = 128
         module_config["n_rnn_layers"] = 1
 

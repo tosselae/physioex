@@ -1,12 +1,9 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-from physioex.train.networks.base import SleepModule
-from physioex.train.networks.utils.proto_layers import *
-
 from vector_quantize_pytorch import SimVQ
 
+from physioex.train.networks.base import SleepModule
+from physioex.train.networks.utils.proto_layers import ChannelsDropout, TimeMasking
 
 module_config = dict()
 
@@ -25,19 +22,7 @@ class ProtoSleepModule(SleepModule):
         log: str = "train",
         log_metrics: bool = False,
     ):
-
-        (commit_loss, coverage, mcy) = embeddings
-
-        coverage = coverage.reshape(-1)
-
-        self.log(
-            f"{log}/cov/mean",
-            coverage.mean() * (1 + (29 // 2)),
-            prog_bar=True,
-            sync_dist=True,
-        )
-        self.log(f"{log}/cov/var", coverage.var(), sync_dist=True)
-
+        # (commit_loss, coverage, dist, y_, mcy) = embeddings
         batch_size, seq_len, n_class = outputs.size()
 
         outputs = outputs.reshape(-1, n_class)
@@ -46,29 +31,45 @@ class ProtoSleepModule(SleepModule):
         loss = self.loss(outputs, targets)
         self.log(f"{log}/loss", loss, prog_bar=True, sync_dist=True)
 
-        loss = loss + commit_loss - 0.1 * coverage.var()
+        acc = self.wacc(outputs, targets)
+        self.log(f"{log}/acc", acc, prog_bar=True, sync_dist=True)
 
-        self.log(
-            f"{log}/acc", self.wacc(outputs, targets), prog_bar=True, sync_dist=True
+        commit_loss = self.nn.commit_loss
+        mcy = self.nn.mcy.to(outputs.device)
+        proto_y = self.nn.proto_y.to(outputs.device)
+
+        self.log(f"{log}/commit_loss", commit_loss, sync_dist=True)
+
+        proto_y = proto_y.reshape(batch_size * seq_len, n_class)
+        mcy = mcy.reshape(batch_size * seq_len, -1, n_class)
+
+        proto_loss = self.loss(proto_y, targets)
+
+        loss = loss + proto_loss + commit_loss
+
+        proto_acc = self.wacc(proto_y, targets)
+
+        eeg_acc = self.wacc(mcy[:, 0], targets)
+        eog_acc = self.wacc(mcy[:, 1], targets)
+        emg_acc = self.wacc(mcy[:, 2], targets)
+
+        mc_loss = (
+            self.loss(mcy[:, 0], targets)
+            + self.loss(mcy[:, 1], targets)
+            + self.loss(mcy[:, 2], targets)
         )
+        loss = loss + mc_loss
+
+        self.nn.channels_proba = [eeg_acc, eog_acc, emg_acc]
+
+        self.log(f"{log}/p_acc", proto_acc, sync_dist=True)
+
+        self.log(f"{log}/eeg_acc", eeg_acc, sync_dist=True)
+        self.log(f"{log}/eog_acc", eog_acc, sync_dist=True)
+        self.log(f"{log}/emg_acc", emg_acc, sync_dist=True)
 
         if log == "val":
             self.log(f"{log}_acc", self.wacc(outputs, targets), sync_dist=True)
-
-        if mcy is not None:
-            mcy = mcy.reshape(batch_size * seq_len, -1, n_class)
-
-            c0_acc = self.wacc(mcy[:, 0], targets)
-            c1_acc = self.wacc(mcy[:, 1], targets)
-            c2_acc = self.wacc(mcy[:, 2], targets)
-
-            self.nn.channels_proba = [c0_acc, c1_acc, c2_acc]
-
-            self.log(f"{log}/c0_acc", c0_acc, sync_dist=True)
-            self.log(f"{log}/c1_acc", c1_acc, sync_dist=True)
-            self.log(f"{log}/c2_acc", c2_acc, sync_dist=True)
-
-        self.log(f"{log}/commit_loss", commit_loss, sync_dist=True)
 
         if log_metrics:
             self.log(f"{log}/f1", self.wf1(outputs, targets), sync_dist=True)
@@ -94,7 +95,7 @@ class ProtoSleepModule(SleepModule):
         # Logica di validazione
         inputs, targets, subjects, dataset_idx = batch
 
-        embeddings, outputs = voting_strategy(self, inputs, self.L)
+        embeddings, outputs = self.nn.eval_on_night(inputs, self.L)
 
         return self.compute_loss(embeddings, outputs, targets, "val")
 
@@ -102,7 +103,7 @@ class ProtoSleepModule(SleepModule):
         # Logica di training
         inputs, targets, subjects, dataset_idx = batch
 
-        embeddings, outputs = voting_strategy(self, inputs, self.L)
+        embeddings, outputs = self.nn.eval_on_night(inputs, self.L)
 
         return self.compute_loss(embeddings, outputs, targets, "test", log_metrics=True)
 
@@ -117,25 +118,17 @@ class ProtoSleepNet(nn.Module):
             temperature=0.1,  # temperature for the softmax
         )
 
-        try:
-            self.weights = module_config[
-                "weights"
-            ]  # default equal weights for channels and mixed channels
-        except:
-            print(module_config)
-            exit(0)
-
-        print("Channel mixing weights :", self.weights)
-
-        self.channel_mixer = nn.TransformerEncoderLayer(
+        t_layer = nn.TransformerEncoderLayer(
             d_model=128, nhead=4, dim_feedforward=256, batch_first=True
         )
 
-        self.channel_mixer = nn.Sequential(self.channel_mixer, nn.LayerNorm([3, 128]))
+        self.channel_mixer = nn.TransformerEncoder(t_layer, num_layers=4)
+
+        self.channel_mixer = _initialize_residual_transformer(self.channel_mixer)
 
         self.prototype = SimVQ(
             dim=128,
-            codebook_size=50,
+            codebook_size= module_config.get("n_prototypes", 50),
             rotation_trick=True,  # use rotation trick from Fifty et al.
             channel_first=False,
         )
@@ -143,12 +136,11 @@ class ProtoSleepNet(nn.Module):
         self.channels_dropout = ChannelsDropout(dropout_prob=0.5)
         self.channels_proba = [0.7, 0.7, 0.7]
 
-        self.channels_sampler = ChannelSampler(
-            hidden_size=128,
-            attention_size=32,
-        )
-
         self.clf = nn.Linear(128, 5)
+
+        self.mcy = None
+        self.commit_loss = None
+        self.proto_y = None
 
     def epoch_encoder(self, x):
         pass
@@ -156,154 +148,141 @@ class ProtoSleepNet(nn.Module):
     def sequence_encoder(self, x):
         pass
 
-    def proto_encoder(self, x):
+    def eval_on_night(self, inputs: torch.Tensor, L: int = 21):
+        batch_size, night_length, n_channels, T, F = inputs.size()
+
+        x, mcy = self.f_ExE(inputs, return_mcy=True)
+
+        # prototyping
+        p, commit_loss = self.f_P(x, return_commit_loss=True)
+        proto_y = self.clf(p.reshape(batch_size * night_length, -1)).reshape(
+            batch_size, night_length, -1
+        )
+
+        y = torch.zeros(batch_size, night_length, 5, device=p.device, dtype=p.dtype)
+        counts = torch.zeros(
+            batch_size, night_length, device=p.device, dtype=torch.float32
+        )
+
+        for i in range(0, L):
+            p_i = p[:, i:]
+            night_length_i = p_i.size(1) - (p_i.size(1) % L)
+            p_i = p_i[:, :night_length_i, :].reshape(-1, L, p_i.size(-1))
+            p_i = self.f_ExS(p_i).reshape(batch_size * night_length_i, -1)
+
+            y[:, i : i + night_length_i] += self.clf(p_i).reshape(
+                batch_size, night_length_i, -1
+            )
+            counts[:, i : i + night_length_i] += 1
+
+        y = y.reshape(batch_size, night_length, -1)  # (batch_size, night_length, 5)
+        y = y / counts.unsqueeze(-1)  # average over the segments
+
+        self.mcy = mcy
+        self.commit_loss = commit_loss
+        self.proto_y = proto_y
+
+        return p, y
+
+    def f_ExE(self, x, return_mask=False, return_mcy=False):
+        # epoch-encoding function for x
         batch, L, nchan, T, F = x.size()
 
         #### epoch encoding ####
         x = x.reshape(batch * L, nchan, T, F)
-        x = self.epoch_encoder(x)
+        x = self.epoch_encoder(x)  # shape : (batch * L, nchan, T, 128)
+        x = x.reshape(batch * L * nchan, T, -1)  # (nchan * batch * L, T, 128)
 
-        x = [self.time_masking(x[:, i]) for i in range(nchan)]
+        x, mask = self.time_masking(x)
+        x = x.reshape(batch * L, nchan, -1)  # (batch * L, nchan, 128)
+        mask = mask.reshape(batch * L, nchan, T)  # (batch * L, nchan, T)
 
-        mask = [mask_.reshape(batch * L, 1, T) for _, mask_ in x]
-        x = [x_.reshape(batch * L, 1, 128) for x_, _ in x]
-        x, mask = torch.cat(x, dim=1), torch.cat(mask, dim=1)
+        mcy = self.clf(x.reshape(batch * L * nchan, -1)).reshape(batch, L, nchan, -1)
 
-        # x shape : (batch_size * seq_len, n_chan, 128)
-        # mask shape : (batch_size * seq_len, n_chan, T)
-        coverage = torch.sum(mask.reshape(-1, T), dim=-1) / ((T // 2) + 1)
-        coverage = coverage.reshape(batch, L, nchan)
+        ### dropout channels ###
+        x = self.channels_dropout(x, self.channels_proba)  # apply dropout to channels
 
         #### channel mixing ####
-        x = (self.weights[0] * x) + (
-            self.weights[1] * self.channel_mixer(x)
-        )  # (batch * L, n_chan, 128)
+        x = x + self.channel_mixer(x)
+
+        x = x.reshape(batch, L, nchan, -1)
+        mask = mask.reshape(batch, L, nchan, T)
+
+        # average across channels
+        x = x.mean(dim=2)  # (batch, L, 128)
+
+        if return_mask and return_mcy:
+            return x, mask, mcy
+
+        if return_mask:
+            return x, mask
+
+        if return_mcy:
+            return x, mcy
 
         return x
 
-    def prototyping(self, x):
-        batch, L, nchan, T, F = x.size()
+    def f_P(self, x, return_indexes=False, return_commit_loss=False):
+        # prototyping utility function for x
+        # x shape : ( batch_size, seq_len, nchan, hidden_size )
+        batch, L, hidden = x.size()
 
-        x = self.proto_encoder(x)
+        x = x.reshape(batch * L, -1)
+        x, indexes, commit_loss = self.prototype(x)
 
-        # prototyping
-        x = x.reshape(batch * L * nchan, 128)
-        p, indexes, commit_loss = self.prototype(x)
-        p = p.reshape(batch, L, nchan, 128)
-        indexes = indexes.reshape(batch, L, nchan)
+        x = x.reshape(batch, L, -1)
+        indexes = indexes.reshape(batch, L)
 
-        # sequence encoding
-        x = self.sequence_encoder(p.clone())
+        if return_indexes and return_commit_loss:
+            return x, indexes, commit_loss
 
-        # channels dropout
-        x = x.reshape(batch * L, nchan, 128)
-        x, alphas = self.channels_sampler(x, r_alphas=True)
+        if return_indexes:
+            return x, indexes
 
-        p = p.reshape(batch * L, nchan, 128)
-        p = torch.einsum("bs, bsh -> bh", alphas, p)
+        if return_commit_loss:
+            return x, commit_loss
 
-        alphas = alphas.reshape(batch, L, nchan)
-        return p, alphas
+        return x
+
+    def f_ExS(self, x):
+        # sequence encoding function for x
+        # x shape : ( batch_size, seq_len, hidden_size )
+        batch, L, hidden = x.size()
+
+        x = x + self.sequence_encoder(x)
+
+        return x.reshape(batch, L, hidden)
 
     def encode(self, x):
         # x shape : (batch_size, seq_len, n_chan, n_samp)
         batch, L, nchan, T, F = x.size()
 
-        #### epoch encoding ####
-        x = x.reshape(batch * L, nchan, T, F)
-        x = self.epoch_encoder(x)
-
-        x = [self.time_masking(x[:, i]) for i in range(nchan)]
-
-        mask = [mask_.reshape(batch * L, 1, T) for _, mask_ in x]
-        x = [x_.reshape(batch * L, 1, 128) for x_, _ in x]
-        x, mask = torch.cat(x, dim=1), torch.cat(mask, dim=1)
-
-        # x shape : (batch_size * seq_len, n_chan, 128)
-        # mask shape : (batch_size * seq_len, n_chan, T)
-        coverage = torch.sum(mask.reshape(-1, T), dim=-1) / ((T // 2) + 1)
-        coverage = coverage.reshape(batch, L, nchan)
-
-        #### channel mixing ####
-        x = (self.weights[0] * x) + (
-            self.weights[1] * self.channel_mixer(x)
-        )  # (batch * L, n_chan, 128)
+        # epoch encoding
+        x, mcy = self.f_ExE(x, return_mcy=True)
 
         # prototyping
-        x = x.reshape(batch * L * nchan, 128)
-        x, indexes, commit_loss = self.prototype(x)
-        x = x.reshape(batch, L, nchan, 128)
-        indexes = indexes.reshape(batch, L, nchan)
+        p, commit_loss = self.f_P(x, return_commit_loss=True)
+
+        # proto-classification
+        proto_y = self.clf(p.reshape(batch * L, -1)).reshape(batch, L, -1)
 
         # sequence encoding
-        x = self.sequence_encoder(x)
-
-        # multi channel classification
-        if self.training:
-            x = x.reshape(-1, nchan, 128)
-            mcy = [
-                self.clf(x[:, 0]).reshape(-1, 1, 5),
-                self.clf(x[:, 1]).reshape(-1, 1, 5),
-                self.clf(x[:, 2]).reshape(-1, 1, 5),
-            ]
-            mcy = torch.cat(mcy, dim=1).reshape(batch, L, nchan, 5)
-            x = x.reshape(batch, L, nchan, 128)
-        else:
-            mcy = None
-        # channels dropout
-        x = x.reshape(batch * L, nchan, 128)
-        x = self.channels_dropout(x, self.channels_proba)  # apply dropout to channels
-        x = self.channels_sampler(x)
+        x = self.f_ExS(p)
 
         # classification
-        x = self.clf(x).reshape(batch, L, -1)
+        y = self.clf(x).reshape(batch, L, -1)
 
-        return (commit_loss, coverage, mcy), x
+        # save the elements for the loss computation
+        self.mcy = mcy
+        self.commit_loss = commit_loss
+        self.proto_y = proto_y
+
+        return p, y
 
     def forward(self, x):
         x, y = self.encode(x)
 
         return y
-
-    def project(self, x):
-        # x shape : (batch_size, seq_len, n_chan, n_samp)
-        batch, L, nchan, T, F = x.size()
-
-        #### epoch encoding ####
-        x = x.reshape(batch * L, nchan, T, F)
-        x = self.epoch_encoder(x)
-
-        x = [self.time_masking(x[:, i]) for i in range(nchan)]
-
-        mask = [mask_.reshape(batch * L, 1, T) for _, mask_ in x]
-        x = [x_.reshape(batch * L, 1, 128) for x_, _ in x]
-        x, mask = torch.cat(x, dim=1), torch.cat(mask, dim=1)
-
-        # x shape : (batch_size * seq_len, n_chan, 128)
-        # mask shape : (batch_size * seq_len, n_chan, T)
-        coverage = torch.sum(mask.reshape(-1, T), dim=-1) / ((T // 2) + 1)
-        coverage = coverage.reshape(batch, L, nchan)
-
-        #### channel mixing ####
-        x = (self.weights[0] * x) + (
-            self.weights[1] * self.channel_mixer(x)
-        )  # (batch * L, n_chan, 128)
-
-        # prototyping
-        x = x.reshape(batch * L * nchan, 128)
-        x, indexes, commit_loss = self.prototype(x)
-        x = x.reshape(batch, L, nchan, 128)
-        indexes = indexes.reshape(batch, L, nchan)
-
-        # sequence encoding
-        x = self.sequence_encoder(x)
-
-        # channels dropout
-        x = x.reshape(batch * L, nchan, 128)
-        x = self.channels_dropout(x, self.channels_proba)  # apply dropout to channels
-        x = self.channels_sampler(x)
-
-        return x.reshape(batch, L, -1)
 
 
 def voting_strategy(model: torch.nn.Module, inputs: torch.Tensor, L: int):
@@ -312,30 +291,36 @@ def voting_strategy(model: torch.nn.Module, inputs: torch.Tensor, L: int):
     outputs = torch.zeros(
         batch_size, night_length, 5, device=inputs.device, dtype=inputs.dtype
     )
-    coverage = torch.zeros(
-        batch_size, night_length, n_channels, device=inputs.device, dtype=inputs.dtype
-    )
 
-    commit_loss = 0
-
-    # input shape is ( bach_size, night_length, n_channels, ... )
-    # segment the input in self.L segments with a sliding window of stride 1 and size self.L
     for i in range(0, inputs.size(1) - L + 1, 1):
         input_segment = inputs[:, i : i + L]
-        (seg_cl, seg_coverage, seg_mcy), seg_outputs = model.encode(input_segment)
+        _, seg_outputs = model.encode(input_segment)
 
         outputs[:, i : i + L] += torch.nn.functional.softmax(seg_outputs, dim=-1)
-        coverage[:, i : i + L] += seg_coverage
 
-        commit_loss += seg_cl
+    return None, outputs
 
-    # normalize the coverage values
-    for i in range(L):
-        coverage[:, i] = coverage[:, i] / (i + 1)
-        coverage[:, -i - 1] = coverage[:, -i - 1] / (i + 1)
 
-    coverage[:, L:-L] = coverage[:, L:-L] / L
+def _initialize_residual_transformer(encoder: nn.TransformerEncoder):
+    """
+    Initialize the TransformerEncoder to act as identity at training start.
+    For residual connection: output = input + encoder(input)
+    We want encoder(input) ≈ 0 initially, so output ≈ input
+    """
+    for layer in encoder.layers:
+        # Initialize feedforward layers to zero
+        torch.nn.init.constant_(layer.linear1.weight, 0.0)
+        torch.nn.init.constant_(layer.linear1.bias, 0.0)
+        torch.nn.init.constant_(layer.linear2.weight, 0.0)
+        torch.nn.init.constant_(layer.linear2.bias, 0.0)
 
-    commit_loss = commit_loss / (inputs.size(1) - L + 1)
+        # Initialize attention output projection to zero
+        torch.nn.init.constant_(layer.self_attn.out_proj.weight, 0.0)
+        torch.nn.init.constant_(layer.self_attn.out_proj.bias, 0.0)
 
-    return (commit_loss, coverage, None), outputs
+        # Initialize Q, K, V projections with small values for stability
+        torch.nn.init.normal_(layer.self_attn.in_proj_weight, mean=0.0, std=0.01)
+        if layer.self_attn.in_proj_bias is not None:
+            torch.nn.init.constant_(layer.self_attn.in_proj_bias, 0.0)
+
+    return encoder

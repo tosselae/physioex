@@ -1,5 +1,4 @@
 import torch
-import torch.optim as optim
 from braindecode.models import SleepStagerChambon2018
 from torch import nn
 

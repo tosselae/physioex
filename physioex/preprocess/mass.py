@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import List, Tuple
 from urllib.request import urlretrieve
 
@@ -14,7 +13,6 @@ from physioex.preprocess.utils.signal import xsleepnet_preprocessing
 
 
 class MASSPreprocessor(Preprocessor):
-
     def __init__(
         self,
         preprocessors_name: List[str] = ["xsleepnet"],
@@ -22,7 +20,6 @@ class MASSPreprocessor(Preprocessor):
         preprocessor_shape=[[3, 29, 129]],
         data_folder: str = None,
     ):
-
         super().__init__(
             dataset_name="mass",
             signal_shape=[3, 3000],
@@ -53,7 +50,6 @@ class MASSPreprocessor(Preprocessor):
 
     @logger.catch
     def read_subject_record(self, record: str) -> Tuple[np.array, np.array]:
-
         signal = []
         for modality in ["eeg", "eog", "emg"]:
             filepath = os.path.join(
@@ -121,7 +117,6 @@ class MASSPreprocessor(Preprocessor):
 
 
 if __name__ == "__main__":
-
     p = MASSPreprocessor(data_folder="/mnt/guido-data/")
 
     p.run()
