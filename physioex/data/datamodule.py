@@ -186,3 +186,13 @@ class PhysioExDataModule(pl.LightningDataModule):
             num_workers=self.num_workers,
             # persistent_workers=True
         )
+
+    def all_dataloader(self, eval=False, shuffle=False):
+        logger.warning('You are loading the full dataset, no split was made.')
+        return DataLoader(
+            self.dataset if not eval else self.eval_dataset,
+            batch_size=self.batch_size if not eval else 1, # self.batch_size if not self.eown else 1,
+            shuffle=shuffle,
+            num_workers=self.num_workers,
+            # persistent_workers=True
+        )
